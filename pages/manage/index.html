@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>森空岛签到管理</title>
+    <script src="/api/plugin/page/bridge-sdk.js"></script>
+    <style>
+      :root {
+        --bg: #f5f6f8;
+        --card: #ffffff;
+        --text: #24292f;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --primary: #3b82f6;
+        --primary-hover: #2563eb;
+        --danger: #ef4444;
+        --ok: #16a34a;
+      }
+      html[data-theme="dark"] {
+        --bg: #15181d;
+        --card: #1e232b;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #333a45;
+        --primary: #3b82f6;
+        --primary-hover: #60a5fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        font-size: 14px;
+      }
+      h1 { font-size: 20px; margin: 0; }
+      h2 { font-size: 16px; margin: 0 0 12px; }
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      button {
+        border: none;
+        border-radius: 6px;
+        padding: 7px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        background: var(--primary);
+        color: #fff;
+      }
+      button:hover { background: var(--primary-hover); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      button.ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      button.danger { background: var(--danger); }
+      input[type="text"], input[type="number"], textarea {
+        width: 100%;
+        padding: 7px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+      }
+      textarea { resize: vertical; min-height: 56px; font-family: monospace; }
+      label { display: block; margin: 8px 0 4px; color: var(--muted); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      th { color: var(--muted); font-weight: 500; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; }
+      .row > div { flex: 1; min-width: 140px; }
+      .msg { margin-top: 10px; font-size: 13px; white-space: pre-wrap; }
+      .msg.ok { color: var(--ok); }
+      .msg.error { color: var(--danger); }
+      .empty { color: var(--muted); padding: 12px 0; }
+      .checkbox-line { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+      .actions button { margin-right: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="page-header">
+      <h1>森空岛签到管理</h1>
+      <div>
+        <button id="refresh-btn" class="ghost">刷新</button>
+        <button id="sign-all-btn">全部签到</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>绑定新账号</h2>
+      <label for="bind-token">森空岛 Token（content 字段）</label>
+      <textarea id="bind-token" placeholder="粘贴 token，例如 N6QKb2C3d4A1b2C3d4"></textarea>
+      <label for="bind-user-id">QQ 号 / 标识（可选，留空自动生成 webui_ 前缀标识）</label>
+      <input type="text" id="bind-user-id" placeholder="例如 123456789" />
+      <div style="margin-top: 10px">
+        <button id="bind-btn">绑定并签到</button>
+      </div>
+      <div id="bind-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>已绑定账号</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>QQ号/标识</th>
+            <th>森空岛昵称</th>
+            <th>明日方舟最近签到</th>
+            <th>终末地最近签到</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="accounts-body"></tbody>
+      </table>
+      <div id="accounts-empty" class="empty" style="display: none">暂无绑定账号</div>
+      <div id="sign-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>自动签到设置</h2>
+      <div class="checkbox-line">
+        <input type="checkbox" id="set-enabled" />
+        <span>启用自动签到</span>
+      </div>
+      <div class="row">
+        <div>
+          <label for="set-hour">执行小时（0-23）</label>
+          <input type="number" id="set-hour" min="0" max="23" />
+        </div>
+        <div>
+          <label for="set-delay">随机延迟秒数（0 为不延迟）</label>
+          <input type="number" id="set-delay" min="0" />
+        </div>
+        <div>
+          <label for="set-max-users">最大用户数（0 为不限）</label>
+          <input type="number" id="set-max-users" min="0" />
+        </div>
+      </div>
+      <div class="checkbox-line">
+        <input type="checkbox" id="set-show-name" />
+        <span>签到结果中显示玩家名称（否则显示 QQ 昵称）</span>
+      </div>
+      <div style="margin-top: 12px">
+        <button id="save-settings-btn">保存设置</button>
+      </div>
+      <div id="settings-msg" class="msg"></div>
+    </div>
+
+    <script>
+      (function () {
+        const bridge = window.AstrBotPluginPage;
+
+        function setMsg(id, text, isError) {
+          const el = document.getElementById(id);
+          el.textContent = text || "";
+          el.className = "msg " + (isError ? "error" : "ok");
+        }
+
+        // 插件页 iframe 处于沙箱中（opaque origin），不能直接 fetch，
+        // 所有请求必须经 dashboard 桥接（apiGet/apiPost）由父页面代发。
+        // 桥会自动解包后端返回的 data 字段；业务错误（code 非 0）原样透传。
+        async function api(path, method, body) {
+          if (!bridge) {
+            throw new Error("未检测到 dashboard 桥接环境，请从 AstrBot WebUI 的插件页面打开");
+          }
+          await bridge.ready();
+          const isGet = (method || "GET").toUpperCase() === "GET";
+          const result = isGet
+            ? await bridge.apiGet(path)
+            : await bridge.apiPost(path, body || {});
+          if (
+            result &&
+            typeof result === "object" &&
+            typeof result.code === "number" &&
+            result.code !== 0
+          ) {
+            throw new Error(result.message || "请求失败");
+          }
+          return result;
+        }
+
+        function fmtDate(d) {
+          return d || "—";
+        }
+
+        async function loadAccounts() {
+          const data = await api("accounts");
+          const tbody = document.getElementById("accounts-body");
+          tbody.innerHTML = "";
+          const accounts = data.accounts || [];
+          document.getElementById("accounts-empty").style.display =
+            accounts.length ? "none" : "block";
+          for (const acc of accounts) {
+            const tr = document.createElement("tr");
+            const lastSign = acc.last_sign || {};
+            tr.innerHTML =
+              "<td></td><td></td><td>" + fmtDate(lastSign.arknights) + "</td>" +
+              "<td>" + fmtDate(lastSign.endfield) + "</td><td class='actions'></td>";
+            tr.children[0].textContent = acc.user_id;
+            tr.children[1].textContent = acc.nickname || acc.last_username || "—";
+
+            const signBtn = document.createElement("button");
+            signBtn.textContent = "签到";
+            signBtn.onclick = () => signOne(acc.user_id, signBtn);
+            const unbindBtn = document.createElement("button");
+            unbindBtn.textContent = "解绑";
+            unbindBtn.className = "danger";
+            unbindBtn.onclick = () => unbind(acc.user_id);
+            tr.children[4].appendChild(signBtn);
+            tr.children[4].appendChild(unbindBtn);
+            tbody.appendChild(tr);
+          }
+        }
+
+        async function signOne(userId, btn) {
+          btn.disabled = true;
+          setMsg("sign-msg", "正在为 " + userId + " 签到...", false);
+          try {
+            const data = await api("sign", "POST", { user_id: userId });
+            const r = (data.results || [])[0];
+            setMsg(
+              "sign-msg",
+              r && r.ok
+                ? userId + " 签到完成：\n" + (r.message_text || "")
+                : userId + " 签到失败：" + ((r && r.error) || "未知错误"),
+              !(r && r.ok)
+            );
+            await loadAccounts();
+          } catch (e) {
+            setMsg("sign-msg", "签到失败：" + e.message, true);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+
+        async function signAll() {
+          const btn = document.getElementById("sign-all-btn");
+          btn.disabled = true;
+          setMsg("sign-msg", "正在为全部账号签到，请稍候...", false);
+          try {
+            const data = await api("sign", "POST", { user_id: "all" });
+            const lines = (data.results || []).map((r) =>
+              r.ok
+                ? r.user_id + "（" + (r.nickname || "") + "）签到完成"
+                : r.user_id + " 签到失败：" + r.error
+            );
+            setMsg("sign-msg", lines.join("\n") || "没有可签到的账号", false);
+            await loadAccounts();
+          } catch (e) {
+            setMsg("sign-msg", "全部签到失败：" + e.message, true);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+
+        async function unbind(userId) {
+          if (!confirm("确定要解绑 " + userId + " 吗？")) return;
+          try {
+            await api("unbind", "POST", { user_id: userId });
+            setMsg("sign-msg", "已解绑 " + userId, false);
+            await loadAccounts();
+          } catch (e) {
+            setMsg("sign-msg", "解绑失败：" + e.message, true);
+          }
+        }
+
+        async function bind() {
+          const btn = document.getElementById("bind-btn");
+          const token = document.getElementById("bind-token").value.trim();
+          const userId = document.getElementById("bind-user-id").value.trim();
+          if (!token) {
+            setMsg("bind-msg", "请填写 token", true);
+            return;
+          }
+          btn.disabled = true;
+          setMsg("bind-msg", "正在验证 token 并签到，请稍候...", false);
+          try {
+            const data = await api("bind", "POST", { token: token, user_id: userId });
+            setMsg(
+              "bind-msg",
+              "绑定成功：" + data.user_id + "（" + data.nickname + "）\n" +
+                (data.message_text || ""),
+              false
+            );
+            document.getElementById("bind-token").value = "";
+            document.getElementById("bind-user-id").value = "";
+            await loadAccounts();
+          } catch (e) {
+            setMsg("bind-msg", "绑定失败：" + e.message, true);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+
+        async function loadSettings() {
+          const cfg = await api("settings");
+          document.getElementById("set-enabled").checked = !!cfg.auto_sign_enabled;
+          document.getElementById("set-hour").value = cfg.auto_sign_hour;
+          document.getElementById("set-delay").value = cfg.auto_sign_delay;
+          document.getElementById("set-max-users").value = cfg.max_users;
+          document.getElementById("set-show-name").checked = !!cfg.show_player_name;
+        }
+
+        async function saveSettings() {
+          const btn = document.getElementById("save-settings-btn");
+          btn.disabled = true;
+          try {
+            await api("settings", "POST", {
+              auto_sign_enabled: document.getElementById("set-enabled").checked,
+              auto_sign_hour: Number(document.getElementById("set-hour").value),
+              auto_sign_delay: Number(document.getElementById("set-delay").value),
+              max_users: Number(document.getElementById("set-max-users").value),
+              show_player_name: document.getElementById("set-show-name").checked,
+            });
+            setMsg("settings-msg", "设置已保存", false);
+          } catch (e) {
+            setMsg("settings-msg", "保存失败：" + e.message, true);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+
+        async function init() {
+          document.getElementById("bind-btn").onclick = bind;
+          document.getElementById("sign-all-btn").onclick = signAll;
+          document.getElementById("save-settings-btn").onclick = saveSettings;
+          document.getElementById("refresh-btn").onclick = init;
+          try {
+            await loadAccounts();
+            await loadSettings();
+          } catch (e) {
+            setMsg("sign-msg", e.message, true);
+          }
+        }
+
+        init();
+      })();
+    </script>
+  </body>
+</html>

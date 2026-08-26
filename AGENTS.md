@@ -26,8 +26,10 @@ astrbot_plugin_skland/
   `ap_state.notified_full`（防重复提醒）、`ap_remind`（个人提醒开关）。
 - **定时任务**：apscheduler AsyncIOScheduler，job id：`skland_auto_sign`（cron）、
   `skland_ap_check`（interval）。改配置后需在 `web_api.py` 的 api_settings 里重排。
-- **理智数据**：`GET /api/v1/game/player/info?uid=` → `data.status.ap`
-  （current/max/completeRecoveryTime）。终末地无官方体力接口（实测 10001/404）。
+- **理智数据**：明日方舟用 `GET /api/v1/game/player/info?uid=` → `data.status.ap`；
+  终末地用 `GET /api/v1/game/endfield/card/detail?roleId=&serverId=`（带 `sk-game-role` 头）
+  → `detail.dungeon`（curStamina/maxStamina/maxTs）。
+  两个接口的 current 都是旧快照，用 `_derive_stamina` 从回满时刻反推（方舟 360s/点，终末地 432s/点）。
 
 ## 约定
 

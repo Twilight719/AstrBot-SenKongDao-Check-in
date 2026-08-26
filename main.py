@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.5.3")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.6.0")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -233,7 +233,7 @@ class SklandPlugin(Star):
         return "\n".join(lines)
 
     async def _check_ap_all_users(self):
-        """检查所有已注册用户的理智，回满时私聊提醒"""
+        """检查所有已注册用户的理智（明日方舟+终末地），回满时私聊提醒"""
         config = self._get_config()
         if not config.get("ap_remind_enabled", False):
             return
@@ -250,32 +250,54 @@ class SklandPlugin(Star):
             if user_data.get("ap_remind") is False:
                 continue
             try:
-                ap_info = await self.api.get_arknights_ap(user_data["token"])
+                ap_all = await self.api.get_ap_all(user_data["token"])
             except Exception as e:
                 logger.warning(f"用户 {user_id} 理智查询失败: {e}")
                 continue
 
-            user_data["ap_cache"] = {
-                "current": ap_info["current"],
-                "max": ap_info["max"],
-                "complete_recovery_time": ap_info["complete_recovery_time"],
-                "ts": int(datetime.now().timestamp()),
-            }
+            now_ts = int(datetime.now().timestamp())
             ap_state = user_data.setdefault("ap_state", {})
+            cache = {}
+            newly_full = []
+
+            for game_key, game_name in (("arknights", "明日方舟"), ("endfield", "终末地")):
+                info = ap_all.get(game_key)
+                if not info:
+                    continue
+                cache[game_key] = {
+                    "current": info["current"],
+                    "max": info["max"],
+                    "complete_recovery_time": info["complete_recovery_time"],
+                    "ts": now_ts,
+                }
+                flag_key = f"notified_full_{game_key}"
+                # 兼容旧版数据：扁平的 notified_full 视为明日方舟的标记
+                legacy = ap_state.get("notified_full", False) if game_key == "arknights" else False
+                notified = ap_state.get(flag_key, legacy)
+
+                if info["max"] > 0 and info["current"] >= info["max"]:
+                    if not notified:
+                        newly_full.append(f"{game_name} 理智已回满 {info['current']}/{info['max']}")
+                    ap_state[flag_key] = True
+                else:
+                    # 理智被消耗后重置，下次回满再提醒
+                    ap_state[flag_key] = False
+
+            if not cache:
+                continue
+            user_data["ap_cache"] = cache
+            ap_state.pop("notified_full", None)  # 清理旧版扁平标记
             changed = True
 
-            if ap_info["max"] > 0 and ap_info["current"] >= ap_info["max"]:
-                if not ap_state.get("notified_full"):
-                    message = (
-                        f"🎮 理智提醒\n\n【{ap_info['nickname']}】\n"
-                        f"理智已回满 {ap_info['current']}/{ap_info['max']}，快去清理智吧~"
-                    )
-                    await self._send_private_message(user_id, user_data, message)
-                    ap_state["notified_full"] = True
-                    logger.info(f"用户 {user_id} 理智已满，已发送提醒")
-            else:
-                # 理智被消耗后重置，下次回满再提醒
-                ap_state["notified_full"] = False
+            if newly_full:
+                info_any = ap_all.get("arknights") or ap_all.get("endfield") or {}
+                message = (
+                    f"🎮 理智提醒\n\n【{info_any.get('nickname', '')}】\n"
+                    + "\n".join(newly_full)
+                    + "\n快去清理智吧~"
+                )
+                await self._send_private_message(user_id, user_data, message)
+                logger.info(f"用户 {user_id} 理智已满（{len(newly_full)} 个游戏），已发送提醒")
 
         if changed:
             await self.put_kv_data("users", users)
@@ -590,10 +612,10 @@ class SklandPlugin(Star):
 
     @filter.llm_tool(name="skland_ap_query")
     async def llm_skland_ap_query(self, event: AstrMessageEvent):
-        """查询当前聊天的用户明日方舟的当前理智（AP）以及预计回满时间。
+        """查询当前聊天的用户在明日方舟和终末地的当前理智（AP/体力）以及预计回满时间。
 
-        当用户问"我现在多少理智""理智满了吗""理智什么时候回满"等涉及明日方舟理智/体力的问题时调用此工具。
-        用户必须事先绑定账号；此工具只支持明日方舟，终末地暂无官方体力数据接口。
+        当用户问"我现在多少理智""理智满了吗""理智什么时候回满""终末地体力多少"等涉及明日方舟/终末地理智、体力的问题时调用此工具。
+        用户必须事先绑定账号；只返回用户已绑定游戏的数据。
         """
         user_id = event.get_sender_id()
         users = await self.get_kv_data("users", {})
@@ -605,17 +627,23 @@ class SklandPlugin(Star):
             )
             return
         try:
-            ap_info = await self.api.get_arknights_ap(user_data["token"])
-            yield event.plain_result(
-                f"【{ap_info['nickname']}】\n{self._format_ap_status(ap_info)}"
-            )
+            ap_all = await self.api.get_ap_all(user_data["token"])
+            blocks = []
+            for game_key, game_name in (("arknights", "明日方舟"), ("endfield", "终末地")):
+                info = ap_all.get(game_key)
+                if info:
+                    blocks.append(f"【{game_name}】{info['nickname']}\n{self._format_ap_status(info)}")
+            if not blocks:
+                yield event.plain_result("没有查询到已绑定游戏的理智数据，请稍后再试")
+                return
+            yield event.plain_result("\n\n".join(blocks))
         except Exception as e:
             logger.error(f"LLM 工具理智查询失败: {e}")
             yield event.plain_result(f"理智查询失败: {str(e)}\n可能需要重新使用 /skdlogin 登录")
 
     @filter.llm_tool(name="skland_ap_remind")
     async def llm_skland_ap_remind(self, event: AstrMessageEvent, enable: bool = True):
-        """开启或关闭当前聊天的用户的明日方舟理智回满私聊提醒。
+        """开启或关闭当前聊天的用户的理智回满私聊提醒（同时覆盖明日方舟和终末地）。
 
         当用户说"理智满了叫我""理智满了提醒我""开启理智提醒"时以 enable=true 调用；
         当用户说"不用提醒我了""关闭理智提醒"时以 enable=false 调用。

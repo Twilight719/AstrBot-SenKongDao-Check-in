@@ -179,7 +179,7 @@
       </div>
       <div class="checkbox-line">
         <input type="checkbox" id="set-ap-remind" />
-        <span>启用理智回满私聊提醒（仅明日方舟，终末地暂无官方体力接口）</span>
+        <span>启用理智回满私聊提醒（明日方舟 + 终末地）</span>
       </div>
       <div class="row">
         <div>
@@ -247,11 +247,25 @@
             tr.children[1].textContent = acc.nickname || acc.last_username || "—";
 
             const ap = acc.ap_cache;
-            if (ap && typeof ap.current === "number") {
-              let apText = ap.current + "/" + ap.max;
-              if (ap.current >= ap.max) apText += " 已满";
-              const updated = ap.ts ? new Date(ap.ts * 1000) : null;
-              if (updated) apText += "（" + updated.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 更新）";
+            if (ap) {
+              const parts = [];
+              const gameNames = { arknights: "方舟", endfield: "终末地" };
+              let apTs = 0;
+              if (typeof ap.current === "number") {
+                // 旧版扁平缓存（仅明日方舟），下次轮询后自动变成按游戏分组
+                parts.push("方舟 " + ap.current + "/" + ap.max + (ap.current >= ap.max ? " 已满" : ""));
+                apTs = ap.ts || 0;
+              } else {
+                for (const key of ["arknights", "endfield"]) {
+                  const g = ap[key];
+                  if (g && typeof g.current === "number") {
+                    parts.push(gameNames[key] + " " + g.current + "/" + g.max + (g.current >= g.max ? " 已满" : ""));
+                    apTs = Math.max(apTs, g.ts || 0);
+                  }
+                }
+              }
+              let apText = parts.join("，") || "—";
+              if (apTs) apText += "（" + new Date(apTs * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 更新）";
               if (acc.ap_remind === false) apText += " [提醒已关]";
               tr.children[4].textContent = apText;
             } else {

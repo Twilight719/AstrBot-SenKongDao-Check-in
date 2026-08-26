@@ -1,6 +1,6 @@
 name: astrbot_plugin_skland
 display_name: 森空岛签到·理智提醒
-desc: 在原版基础上改进：森空岛签到（明日方舟/终末地）+ 明日方舟理智回满提醒，支持定时签到、AI 自然语言操作与 WebUI 管理页
-version: v1.5.3
+desc: 在原版基础上改进：森空岛签到（明日方舟/终末地）+ 双游戏理智回满提醒，支持定时签到、AI 自然语言操作与 WebUI 管理页
+version: v1.6.0
 author: Twilight719
 repo: https://github.com/Twilight719/AstrBot-SenKongDao-Check-in

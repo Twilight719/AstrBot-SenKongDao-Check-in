@@ -443,7 +443,7 @@ class SklandAPI:
     async def get_player_info(self, cred: Credential, uid: str) -> dict:
         """Get Arknights player info (status/ap/building/recruit/...)
 
-        Only works for arknights bindings; endfield has no public data endpoint.
+        Only works for arknights bindings.
         """
         did = await self.get_device_id()
         url = f"https://zonai.skland.com/api/v1/game/player/info?uid={uid}"
@@ -456,45 +456,95 @@ class SklandAPI:
 
         return response.get("data", {})
 
-    async def get_arknights_ap(self, user_token: str) -> dict:
-        """Get Arknights AP (sanity) info for a user token
+    async def get_endfield_card_detail(self, cred: Credential, binding: UserBinding) -> dict:
+        """Get Endfield game card detail (dungeon stamina, missions, spaceship, ...)"""
+        if not binding.roles:
+            raise Exception("终末地没有角色数据")
+        role = binding.roles[0]
+        role_id = role.get("roleId", "")
+        server_id = role.get("serverId", "")
 
-        Returns: {"nickname", "current", "max", "complete_recovery_time"}
-        complete_recovery_time is a unix timestamp, 0 when AP is already full.
+        did = await self.get_device_id()
+        url = (
+            "https://zonai.skland.com/api/v1/game/endfield/card/detail"
+            f"?roleId={role_id}&serverId={server_id}"
+        )
+        headers = self._get_signed_headers(url, "GET", None, cred, did)
+        headers["sk-game-role"] = f"3_{role_id}_{server_id}"
+        headers["referer"] = "https://game.skland.com/"
+        headers["origin"] = "https://game.skland.com/"
 
-        Note: the raw `ap.current` field is stale (value at last sync).
-        Real AP is derived from completeRecoveryTime at 1 point per 6 minutes.
+        response = await self._request("GET", url, headers=headers)
+
+        if response.get("code") != 0:
+            raise Exception(f"获取终末地数据失败: {response.get('message', 'Unknown error')}")
+
+        return response.get("data", {}).get("detail", {})
+
+    @staticmethod
+    def _derive_stamina(raw_current, max_ap, recovery_ts, seconds_per_point: int) -> int:
+        """从回满时刻反推当前体力。接口里的 current 是上次同步的旧值，不能直接用。"""
+        max_ap = int(max_ap or 0)
+        raw_current = int(raw_current or 0)
+        recovery_ts = int(recovery_ts or 0)
+        now = time.time()
+
+        if recovery_ts > now and max_ap > 0:
+            current = max_ap - math.ceil((recovery_ts - now) / seconds_per_point)
+            return max(0, min(current, max_ap))
+        # 无回满倒计时：已满或超上限，取原始值与上限的较大者
+        return max(raw_current, max_ap)
+
+    def _parse_arknights_ap(self, data: dict, nickname: str) -> dict:
+        ap = (data.get("status") or {}).get("ap") or {}
+        return {
+            "nickname": nickname,
+            "current": self._derive_stamina(ap.get("current"), ap.get("max"), ap.get("completeRecoveryTime"), 360),
+            "max": int(ap.get("max") or 0),
+            "complete_recovery_time": int(ap.get("completeRecoveryTime") or 0),
+        }
+
+    def _parse_endfield_stamina(self, detail: dict, binding: UserBinding) -> dict:
+        dungeon = detail.get("dungeon") or {}
+        nickname = (detail.get("base") or {}).get("name") or binding.nickname
+        return {
+            "nickname": nickname,
+            "current": self._derive_stamina(dungeon.get("curStamina"), dungeon.get("maxStamina"), dungeon.get("maxTs"), 432),
+            "max": int(dungeon.get("maxStamina") or 0),
+            "complete_recovery_time": int(dungeon.get("maxTs") or 0),
+        }
+
+    async def get_ap_all(self, user_token: str) -> dict:
+        """Get AP (sanity/stamina) info for all bound games
+
+        Returns: {"arknights": info|None, "endfield": info|None}
+        info = {"nickname", "current", "max", "complete_recovery_time"}
+        complete_recovery_time is a unix timestamp; <= now means already full.
+        A game entry is None when not bound or its query failed.
         """
         auth_code = await self.get_authorization(user_token)
         cred = await self.get_credential(auth_code)
         bindings = await self.get_binding_list(cred)
 
-        ak_binding = next((b for b in bindings if b.app_code == "arknights"), None)
-        if not ak_binding:
-            raise Exception("未绑定明日方舟角色")
+        result = {"arknights": None, "endfield": None}
+        for binding in bindings:
+            try:
+                if binding.app_code == "arknights" and result["arknights"] is None:
+                    data = await self.get_player_info(cred, binding.uid)
+                    result["arknights"] = self._parse_arknights_ap(data, binding.nickname)
+                elif binding.app_code == "endfield" and result["endfield"] is None:
+                    detail = await self.get_endfield_card_detail(cred, binding)
+                    result["endfield"] = self._parse_endfield_stamina(detail, binding)
+            except Exception as e:
+                logger.warning(f"查询 {binding.app_code} 理智失败: {e}")
+        return result
 
-        data = await self.get_player_info(cred, ak_binding.uid)
-        ap = (data.get("status") or {}).get("ap") or {}
-
-        max_ap = ap.get("max", 0)
-        raw_current = ap.get("current", 0)
-        recovery_ts = ap.get("completeRecoveryTime", 0)
-        now = time.time()
-
-        if recovery_ts and recovery_ts > now and max_ap > 0:
-            # 回满倒计时进行中：按 6 分钟/点 反推当前理智
-            current = max_ap - math.ceil((recovery_ts - now) / 360)
-            current = max(0, min(current, max_ap))
-        else:
-            # 无回满倒计时：已满或超上限（药水），取原始值与上限的较大者
-            current = max(raw_current, max_ap)
-
-        return {
-            "nickname": ak_binding.nickname,
-            "current": current,
-            "max": max_ap,
-            "complete_recovery_time": recovery_ts,
-        }
+    async def get_arknights_ap(self, user_token: str) -> dict:
+        """Get Arknights AP (sanity) info for a user token (kept for compatibility)"""
+        ap_all = await self.get_ap_all(user_token)
+        if ap_all["arknights"] is None:
+            raise Exception("未绑定明日方舟角色或查询失败")
+        return ap_all["arknights"]
 
     async def sign_arknights(self, cred: Credential, binding: UserBinding) -> SignInResult:
         """Sign in for Arknights"""

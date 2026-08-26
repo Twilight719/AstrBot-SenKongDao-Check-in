@@ -113,6 +113,23 @@
       <input type="text" id="bind-user-id" placeholder="例如 123456789" />
       <div style="margin-top: 10px">
         <button id="bind-btn">绑定并签到</button>
+        <button id="guide-btn" class="ghost" style="margin-left: 6px">绑定教程</button>
+      </div>
+      <div id="guide-panel" style="display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px">
+        <h2>如何获取森空岛 Token</h2>
+        <ol style="margin: 8px 0; padding-left: 20px; line-height: 1.9">
+          <li>用浏览器登录 <a href="https://www.skland.com/" target="_blank" style="color: var(--primary)">森空岛官网</a></li>
+          <li><b>保持登录状态</b>，在同一浏览器新开标签页，访问：
+            <a href="https://web-api.skland.com/account/info/hg" target="_blank" style="color: var(--primary)">web-api.skland.com/account/info/hg</a>
+            <br />（也可以登录 <a href="https://web-api.hypergryph.com/account/info/hg" target="_blank" style="color: var(--primary)">鹰角网络通行证</a> 的同路径页面）</li>
+          <li>页面会显示一段 JSON，找到 <code>{"content":"XXX"}</code> 字段，复制 <code>XXX</code> 部分（不含引号）粘贴到上面的输入框</li>
+          <li>点击「绑定并签到」，插件会先验证 token，验证通过即完成绑定并立即签到一次</li>
+        </ol>
+        <div style="color: var(--muted); font-size: 13px; line-height: 1.8">
+          ⚠️ token 等同于你的森空岛登录凭证：<b>不要发到群聊或泄露给他人</b>；<br />
+          ⚠️ token 会过期，签到失败时重新按上面步骤取一次新 token 再绑定即可；<br />
+          ⚠️ 也可以在 QQ 里<b>私聊</b>机器人发送 <code>/skdlogin &lt;token&gt;</code> 完成绑定（私聊绑定才能接收自动签到和理智提醒的私聊消息）。
+        </div>
       </div>
       <div id="bind-msg" class="msg"></div>
     </div>
@@ -388,6 +405,12 @@
           document.getElementById("sign-all-btn").onclick = signAll;
           document.getElementById("save-settings-btn").onclick = saveSettings;
           document.getElementById("refresh-btn").onclick = init;
+          document.getElementById("guide-btn").onclick = function () {
+            const panel = document.getElementById("guide-panel");
+            const show = panel.style.display === "none";
+            panel.style.display = show ? "block" : "none";
+            this.textContent = show ? "收起教程" : "绑定教程";
+          };
           try {
             await loadAccounts();
             await loadSettings();

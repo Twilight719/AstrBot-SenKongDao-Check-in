@@ -14,7 +14,7 @@ from quart import request, jsonify
 
 from astrbot.api import logger
 
-PLUGIN_NAME = "astrbot_plugin_skland"
+PLUGIN_NAME = "astrbot_plugin_skland_remind"
 API_PREFIX = f"/{PLUGIN_NAME}"
 LOG_PREFIX = f"[{PLUGIN_NAME}][WebUI]"
 

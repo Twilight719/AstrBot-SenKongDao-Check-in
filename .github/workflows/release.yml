@@ -37,7 +37,7 @@ jobs:
       - name: Create release package
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          PLUGIN_NAME="astrbot_plugin_skland"
+          PLUGIN_NAME="astrbot_plugin_skland_remind"
           zip -r ${PLUGIN_NAME}-${VERSION}.zip . -x "*.git*" -x "*__pycache__*" -x "*.pyc"
 
       - name: Create GitHub Release
@@ -49,6 +49,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            astrbot_plugin_skland-${{ steps.version.outputs.version }}.zip
+            astrbot_plugin_skland_remind-${{ steps.version.outputs.version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,6 @@
 # AstrBot Plugin - 森空岛签到
 
-[![Build and Release](https://github.com/Azincc/astrbot_plugin_skland/actions/workflows/release.yml/badge.svg)](https://github.com/Azincc/astrbot_plugin_skland/actions/workflows/release.yml)
+[![Build and Release](https://github.com/Twilight719/AstrBot-SenKongDao-Check-in/actions/workflows/release.yml/badge.svg)](https://github.com/Twilight719/AstrBot-SenKongDao-Check-in/actions/workflows/release.yml)
 
 AstrBot 森空岛自动签到插件，支持**明日方舟**和**明日方舟：终末地**的每日签到。
 
@@ -25,7 +25,7 @@ AstrBot 森空岛自动签到插件，支持**明日方舟**和**明日方舟：
 ### 方式一：从 Release 下载
 
 1. 前往本仓库的 Releases 页面
-2. 下载最新的 `astrbot_plugin_skland-vX.X.X.zip`
+2. 下载最新的 `astrbot_plugin_skland_remind-vX.X.X.zip`
 3. 解压到 AstrBot 的 `data/plugins` 目录
 4. 在 AstrBot WebUI 的插件页确认插件已启用
 
@@ -33,7 +33,7 @@ AstrBot 森空岛自动签到插件，支持**明日方舟**和**明日方舟：
 
 ```bash
 cd /path/to/AstrBot/data/plugins
-git clone https://github.com/Twilight719/AstrBot-SenKongDao-Check-in.git astrbot_plugin_skland
+git clone https://github.com/Twilight719/AstrBot-SenKongDao-Check-in.git astrbot_plugin_skland_remind
 ```
 
 插件依赖已在 `requirements.txt` 中列出，AstrBot 加载时会自动安装。

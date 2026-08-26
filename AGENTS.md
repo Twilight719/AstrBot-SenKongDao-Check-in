@@ -1,4 +1,4 @@
-# AGENTS.md - astrbot_plugin_skland
+# AGENTS.md - astrbot_plugin_skland_remind
 
 > AstrBot 插件（Python）：森空岛自动签到 + 明日方舟理智提醒。
 > 本目录是 AstrBot 插件，从 Rust 项目 Skland-Auto-Sign-In 移植签名与登录逻辑而来；
@@ -7,7 +7,7 @@
 ## 项目结构
 
 ```
-astrbot_plugin_skland/
+astrbot_plugin_skland_remind/
 ├── main.py            # 插件入口：指令、LLM 工具、定时任务（自动签到/理智检查）
 ├── skland_api.py      # 森空岛 API 客户端：设备指纹、签名、登录、签到、玩家数据
 ├── web_api.py         # WebUI 后端接口（register_web_api 注册到 dashboard）

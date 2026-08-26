@@ -124,6 +124,10 @@ git clone https://github.com/Twilight719/AstrBot-SenKongDao-Check-in.git astrbot
 
 在原作者 Azincc v1.3.0 基础上的增强：
 
+**v1.5.2**
+
+- **修复理智数值不准**：接口返回的 `ap.current` 是上次同步时的旧值，现改为按 `completeRecoveryTime` 回满时刻以 6 分钟/点实时推算当前理智。
+
 **v1.5.1**
 
 - **按账号开关理智提醒**：WebUI 管理页账号列表新增"关提醒/开提醒"按钮，可单独控制每个账号的理智回满提醒（配合已有的 AI 对话开关）。

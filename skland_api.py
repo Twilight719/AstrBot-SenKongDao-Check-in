@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -460,6 +461,9 @@ class SklandAPI:
 
         Returns: {"nickname", "current", "max", "complete_recovery_time"}
         complete_recovery_time is a unix timestamp, 0 when AP is already full.
+
+        Note: the raw `ap.current` field is stale (value at last sync).
+        Real AP is derived from completeRecoveryTime at 1 point per 6 minutes.
         """
         auth_code = await self.get_authorization(user_token)
         cred = await self.get_credential(auth_code)
@@ -471,11 +475,25 @@ class SklandAPI:
 
         data = await self.get_player_info(cred, ak_binding.uid)
         ap = (data.get("status") or {}).get("ap") or {}
+
+        max_ap = ap.get("max", 0)
+        raw_current = ap.get("current", 0)
+        recovery_ts = ap.get("completeRecoveryTime", 0)
+        now = time.time()
+
+        if recovery_ts and recovery_ts > now and max_ap > 0:
+            # 回满倒计时进行中：按 6 分钟/点 反推当前理智
+            current = max_ap - math.ceil((recovery_ts - now) / 360)
+            current = max(0, min(current, max_ap))
+        else:
+            # 无回满倒计时：已满或超上限（药水），取原始值与上限的较大者
+            current = max(raw_current, max_ap)
+
         return {
             "nickname": ak_binding.nickname,
-            "current": ap.get("current", 0),
-            "max": ap.get("max", 0),
-            "complete_recovery_time": ap.get("completeRecoveryTime", 0),
+            "current": current,
+            "max": max_ap,
+            "complete_recovery_time": recovery_ts,
         }
 
     async def sign_arknights(self, cred: Credential, binding: UserBinding) -> SignInResult:

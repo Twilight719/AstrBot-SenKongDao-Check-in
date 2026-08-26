@@ -269,6 +269,22 @@ def register_web_apis(plugin):
                 return jsonify({"token": token}), 200
         return jsonify({"message": "当前请求缺少 Bearer Token"}), 401
 
+    async def api_ap_remind():
+        data = await read_json()
+        user_id = str(data.get("user_id") or "").strip()
+        if not user_id:
+            return err("user_id 不能为空")
+        if "enable" not in data:
+            return err("enable 不能为空")
+
+        users = await plugin.get_kv_data("users", {})
+        if user_id not in users:
+            return err(f"用户 {user_id} 未绑定")
+        users[user_id]["ap_remind"] = bool(data["enable"])
+        await plugin.put_kv_data("users", users)
+        logger.info(f"{LOG_PREFIX} 用户 {user_id} 理智提醒设置为 {bool(data['enable'])}")
+        return ok({"user_id": user_id, "ap_remind": bool(data["enable"])})
+
     # ==================== 路由注册 ====================
 
     routes = [
@@ -277,6 +293,7 @@ def register_web_apis(plugin):
         ("unbind", api_unbind, ["POST"], "解绑账号"),
         ("sign", api_sign, ["POST"], "手动触发签到（单个 user_id 或 all）"),
         ("settings", api_settings, ["GET", "POST"], "读取或保存自动签到设置"),
+        ("ap_remind", api_ap_remind, ["POST"], "设置单个账号的理智回满提醒开关"),
         (
             "bridge/auth_token",
             api_bridge_auth_token,

@@ -244,11 +244,18 @@
             const signBtn = document.createElement("button");
             signBtn.textContent = "签到";
             signBtn.onclick = () => signOne(acc.user_id, signBtn);
+            const remindBtn = document.createElement("button");
+            remindBtn.className = "ghost";
+            const remindOn = acc.ap_remind !== false;
+            remindBtn.textContent = remindOn ? "关提醒" : "开提醒";
+            remindBtn.title = "理智回满私聊提醒（仅对该账号生效）";
+            remindBtn.onclick = () => toggleApRemind(acc.user_id, !remindOn);
             const unbindBtn = document.createElement("button");
             unbindBtn.textContent = "解绑";
             unbindBtn.className = "danger";
             unbindBtn.onclick = () => unbind(acc.user_id);
             tr.children[5].appendChild(signBtn);
+            tr.children[5].appendChild(remindBtn);
             tr.children[5].appendChild(unbindBtn);
             tbody.appendChild(tr);
           }
@@ -303,6 +310,16 @@
             await loadAccounts();
           } catch (e) {
             setMsg("sign-msg", "解绑失败：" + e.message, true);
+          }
+        }
+
+        async function toggleApRemind(userId, enable) {
+          try {
+            await api("ap_remind", "POST", { user_id: userId, enable: enable });
+            setMsg("sign-msg", userId + " 理智提醒已" + (enable ? "开启" : "关闭"), false);
+            await loadAccounts();
+          } catch (e) {
+            setMsg("sign-msg", "设置失败：" + e.message, true);
           }
         }
 

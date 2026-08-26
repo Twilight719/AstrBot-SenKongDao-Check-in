@@ -439,6 +439,45 @@ class SklandAPI:
 
         return bindings
 
+    async def get_player_info(self, cred: Credential, uid: str) -> dict:
+        """Get Arknights player info (status/ap/building/recruit/...)
+
+        Only works for arknights bindings; endfield has no public data endpoint.
+        """
+        did = await self.get_device_id()
+        url = f"https://zonai.skland.com/api/v1/game/player/info?uid={uid}"
+        headers = self._get_signed_headers(url, "GET", None, cred, did)
+
+        response = await self._request("GET", url, headers=headers)
+
+        if response.get("code") != 0:
+            raise Exception(f"获取玩家数据失败: {response.get('message', 'Unknown error')}")
+
+        return response.get("data", {})
+
+    async def get_arknights_ap(self, user_token: str) -> dict:
+        """Get Arknights AP (sanity) info for a user token
+
+        Returns: {"nickname", "current", "max", "complete_recovery_time"}
+        complete_recovery_time is a unix timestamp, 0 when AP is already full.
+        """
+        auth_code = await self.get_authorization(user_token)
+        cred = await self.get_credential(auth_code)
+        bindings = await self.get_binding_list(cred)
+
+        ak_binding = next((b for b in bindings if b.app_code == "arknights"), None)
+        if not ak_binding:
+            raise Exception("未绑定明日方舟角色")
+
+        data = await self.get_player_info(cred, ak_binding.uid)
+        ap = (data.get("status") or {}).get("ap") or {}
+        return {
+            "nickname": ak_binding.nickname,
+            "current": ap.get("current", 0),
+            "max": ap.get("max", 0),
+            "complete_recovery_time": ap.get("completeRecoveryTime", 0),
+        }
+
     async def sign_arknights(self, cred: Credential, binding: UserBinding) -> SignInResult:
         """Sign in for Arknights"""
         did = await self.get_device_id()

@@ -19,6 +19,7 @@ Config (AstrBot plugin config):
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from astrbot.core.star.filter.permission import PermissionType
 import astrbot.api.message_components as Comp
 from astrbot.api import logger, AstrBotConfig
@@ -33,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.4.0")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.5.0")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -81,6 +82,20 @@ class SklandPlugin(Star):
             value=10,
             description="允许绑定的最大用户数量，0表示无限制"
         )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="理智满提醒开关",
+            key="ap_remind_enabled",
+            value=True,
+            description="开启后，将定期检查已绑定用户的明日方舟理智，回满时私聊提醒"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="理智检查间隔（分钟）",
+            key="ap_check_interval",
+            value=15,
+            description="理智检查的时间间隔（分钟），建议 10-30，过短可能触发风控"
+        )
 
     def _get_config(self) -> dict:
         """获取当前配置"""
@@ -90,6 +105,8 @@ class SklandPlugin(Star):
             "show_player_name": self.config.get("show_player_name", True),
             "auto_sign_delay": self.config.get("auto_sign_delay", 10),
             "max_users": self.config.get("max_users", 10),
+            "ap_remind_enabled": self.config.get("ap_remind_enabled", True),
+            "ap_check_interval": self.config.get("ap_check_interval", 15),
         }
 
     async def initialize(self):
@@ -100,6 +117,8 @@ class SklandPlugin(Star):
         if config.get("auto_sign_enabled", False):
             hour = config.get("auto_sign_hour", 1)
             self._start_auto_sign_job(hour)
+        if config.get("ap_remind_enabled", False):
+            self._start_ap_check_job(config.get("ap_check_interval", 15))
         if not self.scheduler.running:
             self.scheduler.start()
 
@@ -171,6 +190,96 @@ class SklandPlugin(Star):
         await self.put_kv_data("users", users)
         logger.info("自动签到执行完毕")
 
+    # ==================== AP (理智) Reminder ====================
+
+    def _start_ap_check_job(self, interval_minutes: int = 15):
+        """启动理智检查定时任务"""
+        interval_minutes = max(5, min(120, interval_minutes))
+        try:
+            self.scheduler.remove_job("skland_ap_check")
+        except Exception:
+            pass
+
+        self.scheduler.add_job(
+            self._check_ap_all_users,
+            trigger=IntervalTrigger(minutes=interval_minutes),
+            id="skland_ap_check",
+            misfire_grace_time=300,
+        )
+        logger.info(f"森空岛理智检查任务已启动，每 {interval_minutes} 分钟执行")
+
+    def _fmt_seconds(self, seconds: float) -> str:
+        """把秒数格式化为 'X小时Y分钟'"""
+        seconds = max(0, int(seconds))
+        hours, rem = divmod(seconds, 3600)
+        minutes = rem // 60
+        if hours:
+            return f"{hours}小时{minutes}分钟"
+        return f"{minutes}分钟"
+
+    def _format_ap_status(self, ap_info: dict) -> str:
+        """格式化理智状态文本"""
+        current = ap_info["current"]
+        max_ap = ap_info["max"]
+        lines = [f"理智：{current}/{max_ap}"]
+        if current >= max_ap:
+            lines.append("已回满！")
+        else:
+            recovery_ts = ap_info.get("complete_recovery_time") or 0
+            remain = recovery_ts - datetime.now().timestamp()
+            if remain > 0:
+                full_at = datetime.fromtimestamp(recovery_ts).strftime("%H:%M")
+                lines.append(f"约 {self._fmt_seconds(remain)} 后回满（{full_at}）")
+        return "\n".join(lines)
+
+    async def _check_ap_all_users(self):
+        """检查所有已注册用户的理智，回满时私聊提醒"""
+        config = self._get_config()
+        if not config.get("ap_remind_enabled", False):
+            return
+
+        users = await self.get_kv_data("users", {})
+        if not users:
+            return
+
+        changed = False
+        for user_id, user_data in users.items():
+            if "token" not in user_data:
+                continue
+            # 用户可在 AI 对话中单独关闭自己的提醒
+            if user_data.get("ap_remind") is False:
+                continue
+            try:
+                ap_info = await self.api.get_arknights_ap(user_data["token"])
+            except Exception as e:
+                logger.warning(f"用户 {user_id} 理智查询失败: {e}")
+                continue
+
+            user_data["ap_cache"] = {
+                "current": ap_info["current"],
+                "max": ap_info["max"],
+                "complete_recovery_time": ap_info["complete_recovery_time"],
+                "ts": int(datetime.now().timestamp()),
+            }
+            ap_state = user_data.setdefault("ap_state", {})
+            changed = True
+
+            if ap_info["max"] > 0 and ap_info["current"] >= ap_info["max"]:
+                if not ap_state.get("notified_full"):
+                    message = (
+                        f"🎮 理智提醒\n\n【{ap_info['nickname']}】\n"
+                        f"理智已回满 {ap_info['current']}/{ap_info['max']}，快去清理智吧~"
+                    )
+                    await self._send_private_message(user_id, user_data, message)
+                    ap_state["notified_full"] = True
+                    logger.info(f"用户 {user_id} 理智已满，已发送提醒")
+            else:
+                # 理智被消耗后重置，下次回满再提醒
+                ap_state["notified_full"] = False
+
+        if changed:
+            await self.put_kv_data("users", users)
+
     async def _send_private_message(self, user_id: str, user_data: dict, message: str):
         """使用统一会话ID发送私聊消息"""
         try:
@@ -230,7 +339,8 @@ class SklandPlugin(Star):
             "森空岛签到插件帮助\n"
             "1. 私聊机器人发送/skdlogin <token> 登录并签到\n"
             "2. 私聊机器人发送/skdlogout 登出\n"
-            "3. /skd 查看签到状态"
+            "3. /skd 查看签到状态\n"
+            "4. 直接对机器人说\"我现在多少理智\"查询理智，说\"理智满了叫我\"开启回满提醒"
         )
     
     # @filter.event_message_type(filter.EventMessageType.PRIVATE_MESSAGE)
@@ -477,3 +587,60 @@ class SklandPlugin(Star):
             else:
                 lines.append(f"{game_name} 暂无签到记录")
         yield event.plain_result("\n".join(lines))
+
+    @filter.llm_tool(name="skland_ap_query")
+    async def llm_skland_ap_query(self, event: AstrMessageEvent):
+        """查询当前聊天的用户明日方舟的当前理智（AP）以及预计回满时间。
+
+        当用户问"我现在多少理智""理智满了吗""理智什么时候回满"等涉及明日方舟理智/体力的问题时调用此工具。
+        用户必须事先绑定账号；此工具只支持明日方舟，终末地暂无官方体力数据接口。
+        """
+        user_id = event.get_sender_id()
+        users = await self.get_kv_data("users", {})
+        user_data = users.get(user_id)
+        if not user_data or "token" not in user_data:
+            yield event.plain_result(
+                "你还没有绑定森空岛账号，暂时无法查询理智。\n"
+                "请先私聊我发送 /skdlogin <token> 完成绑定（token 获取方式见 /skdhelp）。"
+            )
+            return
+        try:
+            ap_info = await self.api.get_arknights_ap(user_data["token"])
+            yield event.plain_result(
+                f"【{ap_info['nickname']}】\n{self._format_ap_status(ap_info)}"
+            )
+        except Exception as e:
+            logger.error(f"LLM 工具理智查询失败: {e}")
+            yield event.plain_result(f"理智查询失败: {str(e)}\n可能需要重新使用 /skdlogin 登录")
+
+    @filter.llm_tool(name="skland_ap_remind")
+    async def llm_skland_ap_remind(self, event: AstrMessageEvent, enable: bool = True):
+        """开启或关闭当前聊天的用户的明日方舟理智回满私聊提醒。
+
+        当用户说"理智满了叫我""理智满了提醒我""开启理智提醒"时以 enable=true 调用；
+        当用户说"不用提醒我了""关闭理智提醒"时以 enable=false 调用。
+        提醒依托插件的后台定时检查，全局开关和检查间隔由管理员在插件配置中设置。
+
+        Args:
+            enable (boolean): true 为开启提醒，false 为关闭提醒
+        """
+        user_id = event.get_sender_id()
+        users = await self.get_kv_data("users", {})
+        user_data = users.get(user_id)
+        if not user_data or "token" not in user_data:
+            yield event.plain_result(
+                "你还没有绑定森空岛账号，暂时无法设置理智提醒。\n"
+                "请先私聊我发送 /skdlogin <token> 完成绑定（token 获取方式见 /skdhelp）。"
+            )
+            return
+        user_data["ap_remind"] = bool(enable)
+        users[user_id] = user_data
+        await self.put_kv_data("users", users)
+        if enable:
+            config = self._get_config()
+            interval = config.get("ap_check_interval", 15)
+            yield event.plain_result(
+                f"已开启理智提醒✅\n理智回满时我会私聊提醒你（约每 {interval} 分钟检查一次）。"
+            )
+        else:
+            yield event.plain_result("已关闭理智提醒，理智回满时将不再提醒你。")

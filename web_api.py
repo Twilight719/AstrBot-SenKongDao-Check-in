@@ -77,6 +77,8 @@ def register_web_apis(plugin):
                     "games": games,
                     "last_sign": last_sign,
                     "bound_at": user_data.get("bound_at") or "",
+                    "ap_cache": user_data.get("ap_cache") or None,
+                    "ap_remind": user_data.get("ap_remind", True),
                 }
             )
         return ok(
@@ -203,12 +205,14 @@ def register_web_apis(plugin):
             "auto_sign_hour",
             "auto_sign_delay",
             "max_users",
+            "ap_remind_enabled",
+            "ap_check_interval",
         ):
             if key not in data:
                 continue
             value = data[key]
             try:
-                if key in ("auto_sign_enabled", "show_player_name"):
+                if key in ("auto_sign_enabled", "show_player_name", "ap_remind_enabled"):
                     value = bool(value)
                 else:
                     value = int(value)
@@ -224,6 +228,8 @@ def register_web_apis(plugin):
             return err("auto_sign_delay 不能为负数")
         if "max_users" in updated and updated["max_users"] < 0:
             return err("max_users 不能为负数")
+        if "ap_check_interval" in updated and not 5 <= updated["ap_check_interval"] <= 120:
+            return err("ap_check_interval 必须在 5-120 分钟之间")
 
         for key, value in updated.items():
             plugin.config[key] = value
@@ -238,6 +244,17 @@ def register_web_apis(plugin):
         else:
             try:
                 plugin.scheduler.remove_job("skland_auto_sign")
+            except Exception:
+                pass
+
+        # 重排理智检查定时任务
+        if config.get("ap_remind_enabled"):
+            plugin._start_ap_check_job(config.get("ap_check_interval", 15))
+            if not plugin.scheduler.running:
+                plugin.scheduler.start()
+        else:
+            try:
+                plugin.scheduler.remove_job("skland_ap_check")
             except Exception:
                 pass
 

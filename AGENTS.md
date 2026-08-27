@@ -24,6 +24,8 @@ astrbot_plugin_skland_remind/
 - **用户数据**：存 AstrBot KV（`get_kv_data("users", {})`），user_data 含
   `token`、`nickname`、`last_sign`、`umo`（私聊推送用）、`ap_cache`（理智缓存）、
   `ap_state.notified_full`（防重复提醒）、`ap_remind`（个人提醒开关）。
+- **私聊通道**：`umo` 为空时私聊推送会被跳过；WebUI 绑定的账号没有 umo，
+  靠 `refresh_umo_on_private_message`（私聊被动监听）在用户私聊机器人时自动补全。
 - **定时任务**：apscheduler AsyncIOScheduler，job id：`skland_auto_sign`（cron）、
   `skland_ap_check`（interval）。改配置后需在 `web_api.py` 的 api_settings 里重排。
 - **理智数据**：明日方舟用 `GET /api/v1/game/player/info?uid=` → `data.status.ap`；

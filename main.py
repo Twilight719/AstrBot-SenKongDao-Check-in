@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland_remind"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.6.1")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.6.2")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -353,6 +353,27 @@ class SklandPlugin(Star):
         return "\n".join(lines)
 
     # ==================== Commands ====================
+
+    @filter.event_message_type(filter.EventMessageType.PRIVATE_MESSAGE)
+    async def refresh_umo_on_private_message(self, event: AstrMessageEvent):
+        """私聊被动监听：为已绑定用户刷新统一会话ID（umo），保证私聊提醒可达。
+
+        通过 WebUI 管理页绑定的账号没有 umo，无法接收自动签到/理智回满的私聊推送；
+        用户在 QQ 私聊机器人发任意一条消息后，这里会自动补全。
+        """
+        user_id = event.get_sender_id()
+        umo = event.unified_msg_origin
+        if not user_id or not umo:
+            return
+        users = await self.get_kv_data("users", {})
+        user_data = users.get(user_id)
+        if not user_data or user_data.get("umo") == umo:
+            return
+        user_data["umo"] = umo
+        user_data["platform_name"] = event.get_platform_name()
+        users[user_id] = user_data
+        await self.put_kv_data("users", users)
+        logger.info(f"已为用户 {user_id} 刷新统一会话ID，私聊提醒通道已就绪")
 
     @filter.command("skdhelp")
     async def skdhelp(self, event: AstrMessageEvent):

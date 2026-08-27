@@ -132,12 +132,19 @@ def register_web_apis(plugin):
         await plugin.put_kv_data("users", users)
 
         logger.info(f"{LOG_PREFIX} WebUI 绑定账号成功: {user_id} ({nickname})")
+        message_text = plugin._format_sign_status(results, nickname)
+        if not user_data.get("umo"):
+            message_text += (
+                "\n\n提示：WebUI 绑定的账号暂无 QQ 私聊通道，"
+                "自动签到结果和理智回满提醒无法私聊推送。"
+                "请在 QQ 里私聊机器人发送任意消息（如 /skd）即可自动开通。"
+            )
         return ok(
             {
                 "user_id": user_id,
                 "nickname": nickname,
                 "results": serialize_results(results),
-                "message_text": plugin._format_sign_status(results, nickname),
+                "message_text": message_text,
             }
         )
 

@@ -23,7 +23,10 @@ astrbot_plugin_skland_remind/
   签名请求用 `_get_signed_headers(url, method, body, cred, did)`。
 - **用户数据**：存 AstrBot KV（`get_kv_data("users", {})`），user_data 含
   `token`、`nickname`、`last_sign`、`umo`（私聊推送用）、`ap_cache`（理智缓存）、
-  `ap_state.notified_full`（防重复提醒）、`ap_remind`（个人提醒开关）。
+  `ap_state.notified_full`（防重复提醒）、`ap_remind`（个人提醒开关）、
+  `notify`（提醒目标：`{"type":"private"}` 或 `{"type":"group","group_id":...}`）。
+- **提醒投递**：统一走 `_deliver_message`，按 user_data 的 `notify` 投递私聊或群聊
+  （群聊不可达时回退私聊）；可选群来自 KV `notify_groups`（`record_group_umo` 群聊被动监听收集）。
 - **私聊通道**：`umo` 为空时私聊推送会被跳过；WebUI 绑定的账号没有 umo，
   靠 `refresh_umo_on_private_message`（私聊被动监听）在用户私聊机器人时自动补全。
 - **定时任务**：apscheduler AsyncIOScheduler，job id：`skland_auto_sign`（cron）、

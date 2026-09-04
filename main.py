@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland_remind"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.6.2")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.0")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -179,13 +179,13 @@ class SklandPlugin(Star):
 
                 # 构建消息
                 message = f"🎮 森空岛自动签到结果\n\n{self._format_sign_status(results, nickname)}"
-                await self._send_private_message(user_id, user_data, message)
+                await self._deliver_message(user_id, user_data, message)
                 users[user_id] = user_data
                 logger.info(f"用户 {user_id} ({nickname}) 自动签到完成")
             except Exception as e:
                 logger.error(f"用户 {user_id} 自动签到失败: {e}")
                 message = f"⚠️ 自动签到失败\n错误: {str(e)}\n请使用 /skdlogin 重新登录"
-                await self._send_private_message(user_id, user_data, message)
+                await self._deliver_message(user_id, user_data, message)
 
         await self.put_kv_data("users", users)
         logger.info("自动签到执行完毕")
@@ -296,14 +296,36 @@ class SklandPlugin(Star):
                     + "\n".join(newly_full)
                     + "\n快去清理智吧~"
                 )
-                await self._send_private_message(user_id, user_data, message)
+                await self._deliver_message(user_id, user_data, message)
                 logger.info(f"用户 {user_id} 理智已满（{len(newly_full)} 个游戏），已发送提醒")
 
         if changed:
             await self.put_kv_data("users", users)
 
-    async def _send_private_message(self, user_id: str, user_data: dict, message: str):
-        """使用统一会话ID发送私聊消息"""
+    async def _deliver_message(self, user_id: str, user_data: dict, message: str):
+        """按用户设置的提醒目标投递消息：私聊（默认）或指定群聊，群聊不可达时回退私聊。"""
+        notify = user_data.get("notify") or {}
+        if notify.get("type") == "group":
+            group_id = str(notify.get("group_id") or "")
+            groups = await self.get_kv_data("notify_groups", {})
+            group_umo = groups.get(group_id)
+            if group_umo:
+                try:
+                    chain = MessageChain()
+                    if user_id.isdigit():
+                        chain.chain.append(Comp.At(qq=user_id))
+                        chain.chain.append(Comp.Plain(" " + message))
+                    else:
+                        chain.chain.append(Comp.Plain(message))
+                    await self.context.send_message(group_umo, chain)
+                    logger.info(f"已发送群聊提醒给用户 {user_id}（群 {group_id}）")
+                    return
+                except Exception as e:
+                    logger.error(f"发送群聊提醒失败: {e}，尝试回退私聊")
+            else:
+                logger.warning(f"用户 {user_id} 的提醒群 {group_id} 没有会话记录，回退私聊")
+
+        # 私聊通道（默认 & 回退）
         try:
             umo = user_data.get("umo")
             if not umo:
@@ -374,6 +396,20 @@ class SklandPlugin(Star):
         users[user_id] = user_data
         await self.put_kv_data("users", users)
         logger.info(f"已为用户 {user_id} 刷新统一会话ID，私聊提醒通道已就绪")
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def record_group_umo(self, event: AstrMessageEvent):
+        """群聊被动监听：记录机器人所在群的会话地址（umo），供群聊提醒投递使用。"""
+        group_id = getattr(event.message_obj, "group_id", None)
+        umo = event.unified_msg_origin
+        if not group_id or not umo:
+            return
+        groups = await self.get_kv_data("notify_groups", {})
+        if groups.get(str(group_id)) == umo:
+            return
+        groups[str(group_id)] = umo
+        await self.put_kv_data("notify_groups", groups)
+        logger.info(f"已记录群 {group_id} 的会话地址，可用于群聊提醒")
 
     @filter.command("skdhelp")
     async def skdhelp(self, event: AstrMessageEvent):

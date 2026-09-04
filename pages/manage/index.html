@@ -144,6 +144,7 @@
             <th>明日方舟最近签到</th>
             <th>终末地最近签到</th>
             <th>理智（缓存）</th>
+            <th>提醒方式</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -230,6 +231,8 @@
           return d || "—";
         }
 
+        let notifyGroupsCache = [];
+
         async function loadAccounts() {
           const data = await api("accounts");
           const tbody = document.getElementById("accounts-body");
@@ -242,7 +245,7 @@
             const lastSign = acc.last_sign || {};
             tr.innerHTML =
               "<td></td><td></td><td>" + fmtDate(lastSign.arknights) + "</td>" +
-              "<td>" + fmtDate(lastSign.endfield) + "</td><td></td><td class='actions'></td>";
+              "<td>" + fmtDate(lastSign.endfield) + "</td><td></td><td></td><td class='actions'></td>";
             tr.children[0].textContent = acc.user_id;
             tr.children[1].textContent = acc.nickname || acc.last_username || "—";
 
@@ -272,6 +275,37 @@
               tr.children[4].textContent = "—";
             }
 
+            // 提醒方式：私聊（默认）或指定群聊
+            const notifyTd = tr.children[5];
+            const typeSel = document.createElement("select");
+            const optP = document.createElement("option");
+            optP.value = "private";
+            optP.textContent = "私聊";
+            const optG = document.createElement("option");
+            optG.value = "group";
+            optG.textContent = "群聊";
+            typeSel.appendChild(optP);
+            typeSel.appendChild(optG);
+            const groupSel = document.createElement("select");
+            groupSel.style.marginLeft = "4px";
+            groupSel.title = "选择接收提醒的群（列表来自机器人收到过消息的群）";
+            for (const g of notifyGroupsCache) {
+              const o = document.createElement("option");
+              o.value = g.group_id;
+              o.textContent = g.group_id;
+              groupSel.appendChild(o);
+            }
+            const curNotify = acc.notify || { type: "private" };
+            typeSel.value = curNotify.type === "group" ? "group" : "private";
+            if (curNotify.group_id) groupSel.value = curNotify.group_id;
+            groupSel.style.display = typeSel.value === "group" ? "" : "none";
+            typeSel.onchange = () =>
+              saveNotifyTarget(acc.user_id, typeSel.value, groupSel.value);
+            groupSel.onchange = () =>
+              saveNotifyTarget(acc.user_id, "group", groupSel.value);
+            notifyTd.appendChild(typeSel);
+            notifyTd.appendChild(groupSel);
+
             const signBtn = document.createElement("button");
             signBtn.textContent = "签到";
             signBtn.onclick = () => signOne(acc.user_id, signBtn);
@@ -285,10 +319,39 @@
             unbindBtn.textContent = "解绑";
             unbindBtn.className = "danger";
             unbindBtn.onclick = () => unbind(acc.user_id);
-            tr.children[5].appendChild(signBtn);
-            tr.children[5].appendChild(remindBtn);
-            tr.children[5].appendChild(unbindBtn);
+            tr.children[6].appendChild(signBtn);
+            tr.children[6].appendChild(remindBtn);
+            tr.children[6].appendChild(unbindBtn);
             tbody.appendChild(tr);
+          }
+        }
+
+        async function loadNotifyGroups() {
+          try {
+            const data = await api("notify_groups");
+            notifyGroupsCache = data.groups || [];
+          } catch (e) {
+            notifyGroupsCache = [];
+          }
+        }
+
+        async function saveNotifyTarget(userId, type, groupId) {
+          try {
+            await api("notify_target", "POST", {
+              user_id: userId,
+              type: type,
+              group_id: groupId,
+            });
+            setMsg(
+              "sign-msg",
+              userId + " 提醒方式已设置为" +
+                (type === "group" ? "群聊（" + groupId + "）" : "私聊"),
+              false
+            );
+            await loadAccounts();
+          } catch (e) {
+            setMsg("sign-msg", "提醒方式设置失败：" + e.message, true);
+            await loadAccounts();
           }
         }
 
@@ -426,6 +489,7 @@
             this.textContent = show ? "收起教程" : "绑定教程";
           };
           try {
+            await loadNotifyGroups();
             await loadAccounts();
             await loadSettings();
           } catch (e) {

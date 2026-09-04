@@ -79,6 +79,7 @@ def register_web_apis(plugin):
                     "bound_at": user_data.get("bound_at") or "",
                     "ap_cache": user_data.get("ap_cache") or None,
                     "ap_remind": user_data.get("ap_remind", True),
+                    "notify": user_data.get("notify") or {"type": "private"},
                 }
             )
         return ok(
@@ -292,6 +293,43 @@ def register_web_apis(plugin):
         logger.info(f"{LOG_PREFIX} 用户 {user_id} 理智提醒设置为 {bool(data['enable'])}")
         return ok({"user_id": user_id, "ap_remind": bool(data["enable"])})
 
+    async def api_notify_groups():
+        """返回机器人已见过、可用于群聊提醒的群列表（被动监听收集）。"""
+        groups = await plugin.get_kv_data("notify_groups", {})
+        return ok({"groups": [{"group_id": gid} for gid in sorted(groups.keys())]})
+
+    async def api_notify_target():
+        data = await read_json()
+        user_id = str(data.get("user_id") or "").strip()
+        notify_type = str(data.get("type") or "").strip()
+        group_id = str(data.get("group_id") or "").strip()
+
+        if not user_id:
+            return err("user_id 不能为空")
+        if notify_type not in ("private", "group"):
+            return err("type 必须是 private 或 group")
+
+        users = await plugin.get_kv_data("users", {})
+        if user_id not in users:
+            return err(f"用户 {user_id} 未绑定")
+
+        if notify_type == "group":
+            if not group_id or not group_id.isdigit():
+                return err("选择群聊提醒时必须填写有效的群号")
+            known = await plugin.get_kv_data("notify_groups", {})
+            if group_id not in known:
+                return err(
+                    f"机器人还没有在群 {group_id} 里收到过消息，无法定位该群；"
+                    "请先让机器人进群并在群里任意发一条消息"
+                )
+            users[user_id]["notify"] = {"type": "group", "group_id": group_id}
+        else:
+            users[user_id]["notify"] = {"type": "private"}
+
+        await plugin.put_kv_data("users", users)
+        logger.info(f"{LOG_PREFIX} 用户 {user_id} 提醒目标设置为 {notify_type} {group_id}")
+        return ok({"user_id": user_id, "notify": users[user_id]["notify"]})
+
     # ==================== 路由注册 ====================
 
     routes = [
@@ -301,6 +339,8 @@ def register_web_apis(plugin):
         ("sign", api_sign, ["POST"], "手动触发签到（单个 user_id 或 all）"),
         ("settings", api_settings, ["GET", "POST"], "读取或保存自动签到设置"),
         ("ap_remind", api_ap_remind, ["POST"], "设置单个账号的理智回满提醒开关"),
+        ("notify_groups", api_notify_groups, ["GET"], "获取可用于群聊提醒的群列表"),
+        ("notify_target", api_notify_target, ["POST"], "设置单个账号的提醒目标（私聊/群聊）"),
         (
             "bridge/auth_token",
             api_bridge_auth_token,

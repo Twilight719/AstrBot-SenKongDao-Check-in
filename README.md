@@ -2,7 +2,7 @@
 
 [![Build and Release](https://github.com/Twilight719/AstrBot-SenKongDao-Check-in/actions/workflows/release.yml/badge.svg)](https://github.com/Twilight719/AstrBot-SenKongDao-Check-in/actions/workflows/release.yml)
 
-AstrBot 森空岛自动签到插件，支持**明日方舟**和**明日方舟：终末地**的每日签到。
+AstrBot 森空岛自动签到插件，支持**明日方舟**和**明日方舟：终末地**的每日签到，以及森空岛版区等级的每日「登岛检票」（两个版区各一次，随签到一起自动完成）。
 
 > 本仓库是在原作者 [Azincc/astrbot_plugin_skland](https://github.com/Azincc/astrbot_plugin_skland) v1.3.0 基础上的改进版，新增了 WebUI 管理页、AI 对话签到和明日方舟理智提醒，详见[本地改进](#本地改进)。各版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 

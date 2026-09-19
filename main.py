@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland_remind"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.0")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.1")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -367,11 +367,13 @@ class SklandPlugin(Star):
         if nickname:
             lines.append(f"【{nickname}】")
         for r in results:
+            verb = "检票" if r.game.startswith("登岛检票") else "签到"
             if r.success or self._is_signed_today(r):
-                award = ", ".join(r.awards) if getattr(r, "awards", None) else "无奖励"
-                lines.append(f"{r.game} 已签到 ({award})")
+                award = ", ".join(r.awards) if getattr(r, "awards", None) else ""
+                suffix = f" ({award})" if award else ""
+                lines.append(f"{r.game} 已{verb}{suffix}")
             else:
-                lines.append(f"{r.game} 签到失败: {r.error}")
+                lines.append(f"{r.game} {verb}失败: {r.error}")
         return "\n".join(lines)
 
     # ==================== Commands ====================

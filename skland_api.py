@@ -659,6 +659,39 @@ class SklandAPI:
 
         return results
 
+    async def score_checkin(self, cred: Credential, game_id: str, game_name: str) -> SignInResult:
+        """登岛检票（森空岛平台积分签到，与游戏角色签到独立，每个游戏每天一次）
+
+        明日方舟 gameId="1"，终末地 gameId="3"。code=10001 表示今日已检票。
+        """
+        did = await self.get_device_id()
+        url = "https://zonai.skland.com/api/v1/score/checkin"
+        body = json.dumps({"gameId": game_id}, separators=(",", ":"))
+        headers = self._get_signed_headers(url, "POST", body, cred, did)
+        headers["Content-Type"] = "application/json"
+
+        client = await self._get_client()
+        resp = await client.post(url, headers=headers, content=body.encode("utf-8"))
+        response = resp.json()
+
+        logger.info(f"[登岛检票] {game_name} response: {json.dumps(response, ensure_ascii=False)}")
+
+        if response.get("code") != 0:
+            return SignInResult(
+                success=False,
+                game=f"登岛检票·{game_name}",
+                nickname="",
+                channel="",
+                error=response.get("message", "Unknown error"),
+            )
+
+        return SignInResult(
+            success=True,
+            game=f"登岛检票·{game_name}",
+            nickname="",
+            channel="",
+        )
+
     async def do_full_sign_in(self, user_token: str) -> tuple[list[SignInResult], str]:
         """
         Complete sign-in flow for a user token
@@ -687,6 +720,28 @@ class SklandAPI:
             elif binding.app_code == "endfield":
                 endfield_results = await self.sign_endfield(cred, binding)
                 results.extend(endfield_results)
+
+        # 登岛检票：森空岛平台积分签到，每个游戏每天一次，与角色签到独立
+        checkin_games = {"arknights": ("1", "明日方舟"), "endfield": ("3", "终末地")}
+        done_checkin = set()
+        for binding in bindings:
+            if binding.app_code not in checkin_games or binding.app_code in done_checkin:
+                continue
+            done_checkin.add(binding.app_code)
+            game_id, game_name = checkin_games[binding.app_code]
+            try:
+                results.append(await self.score_checkin(cred, game_id, game_name))
+            except Exception as e:
+                logger.warning(f"登岛检票 {game_name} 异常: {e}")
+                results.append(
+                    SignInResult(
+                        success=False,
+                        game=f"登岛检票·{game_name}",
+                        nickname="",
+                        channel="",
+                        error=str(e),
+                    )
+                )
 
         return results, nickname
 

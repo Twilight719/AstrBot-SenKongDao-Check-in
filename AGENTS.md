@@ -35,6 +35,9 @@ astrbot_plugin_skland_remind/
   终末地用 `GET /api/v1/game/endfield/card/detail?roleId=&serverId=`（带 `sk-game-role` 头）
   → `detail.dungeon`（curStamina/maxStamina/maxTs）。
   两个接口的 current 都是旧快照，用 `_derive_stamina` 从回满时刻反推（方舟 360s/点，终末地 432s/点）。
+- **登岛检票**：`POST /api/v1/score/checkin`，body `{"gameId":"1"}`（方舟）/ `"3"`（终末地），
+  与角色签到独立、每个游戏每天一次；code=10001 表示今日已检票。
+  在 `do_full_sign_in` 里按游戏去重后各执行一次，结果 game 名为 `登岛检票·<游戏名>`。
 
 ## 约定
 

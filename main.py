@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland_remind"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.1")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.2")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 
@@ -617,9 +617,10 @@ class SklandPlugin(Star):
 
     @filter.llm_tool(name="skland_sign_in")
     async def llm_skland_sign_in(self, event: AstrMessageEvent):
-        """为当前聊天的用户执行森空岛（Skland）每日签到，覆盖明日方舟和终末地。
+        """为当前聊天的用户【实际执行】森空岛（Skland）每日签到，覆盖明日方舟和终末地。此操作会产生真实的签到行为。
 
-        当用户说"签到""打卡""帮我签到森空岛""明日方舟签到""终末地签到"等涉及森空岛/鹰角游戏签到的请求时调用此工具。
+        仅当用户明确要求"现在去签到"时才调用，例如："签到""打卡""帮我签到森空岛""明日方舟签到""终末地签到"。
+        【注意】查询类问题不要调用本工具：用户说"查一下签到记录""我签到过吗""今天签到了吗""签到状态/签到情况怎么样"等，应改用 skland_sign_status 工具。
         用户必须事先绑定账号（通过私聊机器人发送 /skdlogin <token> 或在 WebUI 管理页绑定）；不要向用户索要 token，绑定只能由用户自己完成。
         """
         user_id = event.get_sender_id()
@@ -644,8 +645,8 @@ class SklandPlugin(Star):
     async def llm_skland_sign_status(self, event: AstrMessageEvent):
         """查询当前聊天的用户森空岛（Skland）账号绑定情况与各游戏（明日方舟/终末地）的最近签到日期。
 
-        当用户问"我签到过吗""今天签到了吗""我的森空岛绑定状态"等查询类问题时调用此工具。
-        此工具只查询本地记录，不会触发真实签到；如需签到请改用 skland_sign_in。
+        当用户说"查一下签到记录""我签到过吗""今天签到了吗""最近什么时候签的到""我的森空岛绑定状态""签到情况怎么样"等查询类问题时调用此工具。
+        此工具只查询本地记录，不会触发真实签到；只有当用户明确要求"现在去签到/打卡"时才使用 skland_sign_in。
         """
         user_id = event.get_sender_id()
         users = await self.get_kv_data("users", {})

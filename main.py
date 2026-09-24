@@ -34,7 +34,7 @@ from .web_api import register_web_apis
 PLUGIN_NAME = "astrbot_plugin_skland_remind"
 
 
-@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.2")
+@register(PLUGIN_NAME, "AstrBot", "森空岛自动签到插件", "1.7.3")
 class SklandPlugin(Star):
     """森空岛签到插件"""
 

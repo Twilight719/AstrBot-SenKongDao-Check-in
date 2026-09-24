@@ -8,7 +8,6 @@ import gzip
 import hashlib
 import hmac
 import json
-import logging
 import math
 import time
 import uuid
@@ -19,7 +18,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-logger = logging.getLogger("skland_api")
+from astrbot.api import logger
 from Crypto.Cipher import AES, DES, PKCS1_v1_5
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad
@@ -561,7 +560,7 @@ class SklandAPI:
         )
 
         # Log the response for debugging
-        logger.info(f"[明日方舟] {binding.nickname} sign-in response: {json.dumps(response, ensure_ascii=False)}")
+        logger.debug(f"[明日方舟] {binding.nickname} sign-in response: {json.dumps(response, ensure_ascii=False)}")
 
         if response.get("code") != 0:
             return SignInResult(
@@ -621,7 +620,7 @@ class SklandAPI:
             response = resp.json()
 
             # Log the response for debugging
-            logger.info(f"[终末地] {role_nickname} sign-in response: {json.dumps(response, ensure_ascii=False)}")
+            logger.debug(f"[终末地] {role_nickname} sign-in response: {json.dumps(response, ensure_ascii=False)}")
 
             if response.get("code") != 0:
                 results.append(
@@ -674,7 +673,7 @@ class SklandAPI:
         resp = await client.post(url, headers=headers, content=body.encode("utf-8"))
         response = resp.json()
 
-        logger.info(f"[登岛检票] {game_name} response: {json.dumps(response, ensure_ascii=False)}")
+        logger.debug(f"[登岛检票] {game_name} response: {json.dumps(response, ensure_ascii=False)}")
 
         if response.get("code") != 0:
             return SignInResult(
